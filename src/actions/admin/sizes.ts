@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import prisma from "@/lib/db/prisma";
 import { requireAdmin } from "@/lib/auth";
-import { sizeCreateSchema, sizeUpdateSchema, sizeIdSchema } from "@/schemas/size";
+import {
+  sizeCreateSchema,
+  sizeUpdateSchema,
+  sizeIdSchema,
+} from "@/schemas/size";
 import { z } from "zod";
 
 export async function getSizes(type?: string) {
@@ -17,7 +21,7 @@ export async function getSizes(type?: string) {
 
 export async function getSizeById(id: string) {
   const result = sizeIdSchema.safeParse({ id });
-  if (!result.success) return { success: false, error: result.error.errors };
+  if (!result.success) return { success: false, error: result.error.issues };
 
   const size = await prisma.sizes.findUnique({ where: { id } });
   if (!size) return { success: false, error: "Size not found" };
@@ -28,27 +32,42 @@ export async function getSizeById(id: string) {
 export async function createSize(data: z.infer<typeof sizeCreateSchema>) {
   const admin = await requireAdmin();
   const result = sizeCreateSchema.safeParse(data);
-  if (!result.success) return { success: false, error: result.error.errors };
+  if (!result.success) return { success: false, error: result.error.issues };
 
   const size = await prisma.sizes.create({ data: result.data });
 
   await prisma.audit_logs.create({
-    data: { actor_user_id: admin.id, action: "CREATE", entity_type: "sizes", entity_id: size.id, new_values: size },
+    data: {
+      actor_user_id: admin.id,
+      action: "CREATE",
+      entity_type: "sizes",
+      entity_id: size.id,
+      new_values: size,
+    },
   });
 
   revalidatePath("/admin/products/attributes");
   return { success: true, data: size };
 }
 
-export async function updateSize(id: string, data: z.infer<typeof sizeUpdateSchema>) {
+export async function updateSize(
+  id: string,
+  data: z.infer<typeof sizeUpdateSchema>,
+) {
   const admin = await requireAdmin();
   const result = sizeUpdateSchema.safeParse(data);
-  if (!result.success) return { success: false, error: result.error.errors };
+  if (!result.success) return { success: false, error: result.error.issues };
 
   const size = await prisma.sizes.update({ where: { id }, data: result.data });
 
   await prisma.audit_logs.create({
-    data: { actor_user_id: admin.id, action: "UPDATE", entity_type: "sizes", entity_id: id, new_values: size },
+    data: {
+      actor_user_id: admin.id,
+      action: "UPDATE",
+      entity_type: "sizes",
+      entity_id: id,
+      new_values: size,
+    },
   });
 
   revalidatePath("/admin/products/attributes");
@@ -58,15 +77,24 @@ export async function updateSize(id: string, data: z.infer<typeof sizeUpdateSche
 export async function deleteSize(id: string) {
   const admin = await requireAdmin();
   const idResult = sizeIdSchema.safeParse({ id });
-  if (!idResult.success) return { success: false, error: idResult.error.errors };
+  if (!idResult.success)
+    return { success: false, error: idResult.error.issues };
 
-  const variantCount = await prisma.product_variants.count({ where: { size_id: id } });
-  if (variantCount > 0) return { success: false, error: "Cannot delete size with variants" };
+  const variantCount = await prisma.product_variants.count({
+    where: { size_id: id },
+  });
+  if (variantCount > 0)
+    return { success: false, error: "Cannot delete size with variants" };
 
   await prisma.sizes.delete({ where: { id } });
 
   await prisma.audit_logs.create({
-    data: { actor_user_id: admin.id, action: "DELETE", entity_type: "sizes", entity_id: id },
+    data: {
+      actor_user_id: admin.id,
+      action: "DELETE",
+      entity_type: "sizes",
+      entity_id: id,
+    },
   });
 
   revalidatePath("/admin/products/attributes");
