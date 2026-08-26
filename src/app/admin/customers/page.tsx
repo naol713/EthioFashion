@@ -1,0 +1,6 @@
+import { getCustomers } from '@/actions/admin/customers';
+
+export default async function AdminCustomersPage() {
+  const customers = await getCustomers();
+  return <div className="space-y-5"><div><h2 className="text-2xl font-bold">Customers</h2><p className="text-gray-600 mt-1">Customer profiles, addresses, and order counts.</p></div><div className="bg-white rounded-xl border border-gray-200 overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 text-left"><tr><th className="p-4">Customer</th><th className="p-4">Phone</th><th className="p-4">Orders</th><th className="p-4">Addresses</th><th className="p-4">Joined</th></tr></thead><tbody className="divide-y">{customers.map((customer) => <tr key={customer.id}><td className="p-4 font-medium">{customer.first_name} {customer.last_name}</td><td className="p-4">{customer.phone || '-'}</td><td className="p-4">{customer._count.orders}</td><td className="p-4">{customer._count.addresses}</td><td className="p-4">{customer.created_at.toLocaleDateString()}</td></tr>)}</tbody></table></div></div>;
+}

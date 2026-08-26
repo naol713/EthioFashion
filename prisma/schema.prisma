@@ -1,0 +1,723 @@
+// Fashion E-Commerce Platform - Complete Database Schema
+// Based on MASTER_DEVELOPMENT_SPEC.md
+// Version: 1.0 | Date: 2026-08-22
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+// User roles
+enum UserRole {
+  CUSTOMER
+  ADMIN
+}
+
+// Product status
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+// Size type for classification
+enum SizeType {
+  CLOTHING
+  SHOE
+}
+
+// Inventory transaction types
+enum InventoryTransactionType {
+  INITIAL_STOCK
+  RESTOCK
+  SALE
+  RESERVATION
+  RELEASE
+  RETURN
+  DAMAGE
+  ADJUSTMENT
+  CANCELLATION
+}
+
+// Cart status
+enum CartStatus {
+  ACTIVE
+  CONVERTED
+  ABANDONED
+}
+
+// Coupon discount types
+enum CouponDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+// Review status
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Payment methods
+enum PaymentMethod {
+  TELEBIRR
+  CHAPA
+  CBE_BANK
+  ABAY_BANK
+}
+
+// Payment status
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+// Order status
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  PROCESSING
+  READY_FOR_DELIVERY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+// Delivery status
+enum DeliveryStatus {
+  PENDING
+  PREPARING
+  READY
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+}
+
+// Notification types
+enum NotificationType {
+  ORDER_CONFIRMED
+  ORDER_SHIPPED
+  ORDER_DELIVERED
+  PAYMENT_SUCCESS
+  PROMOTION
+  SYSTEM
+}
+
+// Gender targeting
+enum ProductGender {
+  MALE
+  FEMALE
+  UNISEX
+}
+
+// ============================================
+// AUTH & USER MANAGEMENT
+// ============================================
+
+// Profiles table - extends Supabase Auth
+model profiles {
+  id              String    @id @default(uuid())
+  user_id         String    @unique @map("user_id")
+  first_name      String    @map("first_name")
+  last_name       String    @map("last_name")
+  phone           String?   @db.VarChar(20)
+  avatar_url      String?   @map("avatar_url")
+  date_of_birth   DateTime? @map("date_of_birth")
+  created_at      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updated_at      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user            user_roles[]
+  addresses       addresses[]
+  carts           carts[]
+  wishlists       wishlists[]
+  orders          orders[]
+  reviews         reviews[]
+  coupons         coupon_usage[]
+  notifications   notifications[]
+  audit_logs      audit_logs[] @relation("AuditActor")
+
+  @@map("profiles")
+}
+
+// User roles for authorization
+model user_roles {
+  id        String    @id @default(uuid())
+  user_id   String    @map("user_id")
+  role      UserRole  @default(CUSTOMER)
+  created_at DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  profile   profiles  @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([user_id, role])
+  @@map("user_roles")
+}
+
+// ============================================
+// CATALOG MANAGEMENT
+// ============================================
+
+// Categories with hierarchical support
+model categories {
+  id            String       @id @default(uuid())
+  name          String
+  slug          String       @unique
+  description   String?
+  image_url     String?      @map("image_url")
+  parent_id     String?      @map("parent_id")
+  is_active     Boolean      @default(true) @map("is_active")
+  sort_order    Int          @default(0) @map("sort_order")
+  created_at    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updated_at    DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Self-referential hierarchy
+  parent        categories?  @relation("CategoryHierarchy", fields: [parent_id], references: [id])
+  children      categories[] @relation("CategoryHierarchy")
+
+  // Relations
+  products      products[]
+
+  @@index([parent_id])
+  @@index([is_active])
+  @@index([sort_order])
+  @@map("categories")
+}
+
+// Brands
+model brands {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  logo_url    String?   @map("logo_url")
+  is_active   Boolean   @default(true) @map("is_active")
+  created_at  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updated_at  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  products    products[]
+
+  @@map("brands")
+}
+
+// Products
+model products {
+  id                String         @id @default(uuid())
+  category_id       String         @map("category_id")
+  brand_id          String?        @map("brand_id")
+  name              String
+  slug              String         @unique
+  description       String
+  short_description String?        @map("short_description")
+  material          String?
+  gender            ProductGender?
+  status            ProductStatus  @default(DRAFT)
+  featured          Boolean        @default(false)
+  created_at        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updated_at        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deleted_at        DateTime?      @map("deleted_at") @db.Timestamptz
+
+  // Relations
+  category          categories     @relation(fields: [category_id], references: [id])
+  brand             brands?        @relation(fields: [brand_id], references: [id])
+  variants          product_variants[]
+  images            product_images[]
+  reviews           reviews[]
+  wishlist_items    wishlist_items[]
+  order_items       order_items[]
+
+  @@index([category_id])
+  @@index([brand_id])
+  @@index([status])
+  @@index([featured])
+  @@index([created_at])
+  @@map("products")
+}
+
+// Product images - supports product-level and variant-specific images
+model product_images {
+  id          String    @id @default(uuid())
+  product_id  String    @map("product_id")
+  variant_id  String?   @map("variant_id")
+  url         String
+  alt_text    String?   @map("alt_text")
+  sort_order  Int       @default(0) @map("sort_order")
+  is_primary  Boolean   @default(false) @map("is_primary")
+  created_at  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  product     products          @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  variant     product_variants? @relation(fields: [variant_id], references: [id], onDelete: SetNull)
+
+  @@index([product_id])
+  @@index([variant_id])
+  @@map("product_images")
+}
+
+// Colors
+model colors {
+  id        String    @id @default(uuid())
+  name      String
+  slug      String    @unique
+  hex_code  String?   @map("hex_code")
+  created_at DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  variants  product_variants[]
+
+  @@map("colors")
+}
+
+// Sizes
+model sizes {
+  id          String     @id @default(uuid())
+  name        String
+  type        SizeType
+  sort_order  Int        @default(0) @map("sort_order")
+  created_at  DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  variants    product_variants[]
+
+  @@map("sizes")
+}
+
+// Product variants - SKU level with price and attributes
+model product_variants {
+  id                  String    @id @default(uuid())
+  product_id          String    @map("product_id")
+  sku                 String    @unique
+  color_id            String?   @map("color_id")
+  size_id             String?   @map("size_id")
+  price               Decimal   @db.Decimal(12, 2)
+  compare_at_price    Decimal?  @map("compare_at_price") @db.Decimal(12, 2)
+  cost_price          Decimal?  @map("cost_price") @db.Decimal(12, 2)
+  low_stock_threshold Int       @default(5) @map("low_stock_threshold")
+  weight              Decimal?  @db.Decimal(8, 2)
+  is_active           Boolean   @default(true) @map("is_active")
+  created_at          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updated_at          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  product             products          @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  color               colors?           @relation(fields: [color_id], references: [id])
+  size                sizes?            @relation(fields: [size_id], references: [id])
+  inventory           inventory?
+  images              product_images[]
+  cart_items          cart_items[]
+  order_items         order_items[]
+
+  @@unique([product_id, color_id, size_id])
+  @@index([sku])
+  @@index([is_active])
+  @@map("product_variants")
+}
+
+// ============================================
+// INVENTORY MANAGEMENT
+// ============================================
+
+// Current inventory per variant
+model inventory {
+  id                String    @id @default(uuid())
+  variant_id        String    @unique @map("variant_id")
+  quantity          Int       @default(0)
+  reserved_quantity Int       @default(0) @map("reserved_quantity")
+  low_stock_threshold Int     @default(5) @map("low_stock_threshold")
+  created_at        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updated_at        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  variant           product_variants @relation(fields: [variant_id], references: [id], onDelete: Cascade)
+  transactions      inventory_transactions[]
+
+  // Computed: available = quantity - reserved_quantity
+  @@map("inventory")
+}
+
+// Inventory transaction history for audit trail
+model inventory_transactions {
+  id                String                @id @default(uuid())
+  variant_id        String                @map("variant_id")
+  type              InventoryTransactionType
+  quantity          Int
+  previous_quantity Int                   @map("previous_quantity")
+  new_quantity      Int                   @map("new_quantity")
+  reference_type    String?               @map("reference_type")
+  reference_id      String?               @map("reference_id")
+  note              String?
+  created_by        String?               @map("created_by")
+  created_at        DateTime              @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  variant           inventory             @relation(fields: [variant_id], references: [id], onDelete: Cascade)
+
+  @@index([variant_id])
+  @@index([type])
+  @@index([created_at])
+  @@map("inventory_transactions")
+}
+
+// ============================================
+// SHOPPING CART & WISHLIST
+// ============================================
+
+// One cart per user
+model carts {
+  id        String     @id @default(uuid())
+  user_id   String     @unique @map("user_id")
+  status    CartStatus @default(ACTIVE)
+  created_at DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updated_at DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user      profiles   @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  items     cart_items[]
+
+  @@map("carts")
+}
+
+// Cart items
+model cart_items {
+  id          String    @id @default(uuid())
+  cart_id     String    @map("cart_id")
+  variant_id  String    @map("variant_id")
+  quantity    Int       @default(1)
+  created_at  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updated_at  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  cart        carts            @relation(fields: [cart_id], references: [id], onDelete: Cascade)
+  variant     product_variants @relation(fields: [variant_id], references: [id], onDelete: Cascade)
+
+  @@unique([cart_id, variant_id])
+  @@map("cart_items")
+}
+
+// One wishlist per user
+model wishlists {
+  id        String    @id @default(uuid())
+  user_id   String    @unique @map("user_id")
+  created_at DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updated_at DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user      profiles        @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  items     wishlist_items[]
+
+  @@map("wishlists")
+}
+
+// Wishlist items (products, not variants)
+model wishlist_items {
+  id          String    @id @default(uuid())
+  wishlist_id String    @map("wishlist_id")
+  product_id  String    @map("product_id")
+  created_at  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  wishlist    wishlists  @relation(fields: [wishlist_id], references: [id], onDelete: Cascade)
+  product     products   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([wishlist_id, product_id])
+  @@map("wishlist_items")
+}
+
+// ============================================
+// CUSTOMER ADDRESSES
+// ============================================
+
+// Ethiopia-specific delivery addresses
+model addresses {
+  id                String    @id @default(uuid())
+  user_id           String    @map("user_id")
+  label             String?   // e.g., "Home", "Office"
+  recipient_name    String    @map("recipient_name")
+  phone             String    @db.VarChar(20)
+  region            String
+  city              String
+  sub_city          String?   @map("sub_city")
+  woreda            String?   // Ethiopian administrative division
+  street_address    String    @map("street_address")
+  building          String?
+  additional_info   String?   @map("additional_info")
+  is_default        Boolean   @default(false) @map("is_default")
+  created_at        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updated_at        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user              profiles  @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  orders            orders[]
+
+  @@index([user_id])
+  @@map("addresses")
+}
+
+// ============================================
+// ORDERS
+// ============================================
+
+// Orders
+model orders {
+  id                    String         @id @default(uuid())
+  order_number          String         @unique @map("order_number")
+  user_id               String         @map("user_id")
+  subtotal              Decimal        @db.Decimal(12, 2)
+  discount_amount       Decimal        @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  delivery_fee          Decimal        @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  total_amount          Decimal        @map("total_amount") @db.Decimal(12, 2)
+  currency              String         @default("ETB")
+  status                OrderStatus    @default(PENDING_PAYMENT)
+  payment_status        PaymentStatus  @default(PENDING)
+  delivery_status       DeliveryStatus @default(PENDING)
+  shipping_address_snapshot Json?      @map("shipping_address_snapshot")
+  customer_note         String?        @map("customer_note")
+  created_at            DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updated_at            DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user                  profiles           @relation(fields: [user_id], references: [user_id])
+  address               addresses?         @relation(fields: [address_id], references: [id])
+  address_id            String?            @map("address_id")
+  items                 order_items[]
+  payment               payments?
+  status_history        order_status_history[]
+
+  @@index([user_id])
+  @@index([order_number])
+  @@index([status])
+  @@index([payment_status])
+  @@index([created_at])
+  @@map("orders")
+}
+
+// Order line items with historical data snapshots
+model order_items {
+  id                String    @id @default(uuid())
+  order_id          String    @map("order_id")
+  product_id        String?   @map("product_id")
+  variant_id        String?   @map("variant_id")
+  product_name_snapshot String @map("product_name_snapshot")
+  sku_snapshot      String    @map("sku_snapshot")
+  size_snapshot     String?   @map("size_snapshot")
+  color_snapshot    String?   @map("color_snapshot")
+  unit_price        Decimal   @map("unit_price") @db.Decimal(12, 2)
+  quantity          Int
+  subtotal          Decimal   @map("subtotal") @db.Decimal(12, 2)
+
+  // Relations
+  order             orders            @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product           products?         @relation(fields: [product_id], references: [id])
+  variant           product_variants? @relation(fields: [variant_id], references: [id])
+
+  @@index([order_id])
+  @@map("order_items")
+}
+
+// Order status history for audit trail
+model order_status_history {
+  id            String      @id @default(uuid())
+  order_id      String      @map("order_id")
+  from_status   OrderStatus? @map("from_status")
+  to_status     OrderStatus
+  changed_by    String?     @map("changed_by")
+  note          String?
+  created_at    DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  order         orders      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id])
+  @@index([created_at])
+  @@map("order_status_history")
+}
+
+// ============================================
+// PAYMENTS
+// ============================================
+
+// One payment per order
+model payments {
+  id          String        @id @default(uuid())
+  order_id    String        @unique @map("order_id")
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  amount      Decimal       @db.Decimal(12, 2)
+  currency    String        @default("ETB")
+  reference   String        @unique
+  paid_at     DateTime?     @map("paid_at") @db.Timestamptz
+  created_at  DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updated_at  DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  order       orders                @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  transactions payment_transactions[]
+
+  @@map("payments")
+}
+
+// Payment transactions for provider-specific data
+model payment_transactions {
+  id                String    @id @default(uuid())
+  payment_id        String    @map("payment_id")
+  transaction_type  String    @map("transaction_type")
+  provider_reference String?  @map("provider_reference")
+  amount            Decimal   @db.Decimal(12, 2)
+  status            String
+  metadata          Json?
+  created_at        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  payment           payments  @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+
+  @@index([payment_id])
+  @@map("payment_transactions")
+}
+
+// ============================================
+// DISCOUNTS & COUPONS
+// ============================================
+
+// Coupons
+model coupons {
+  id                  String            @id @default(uuid())
+  code                String            @unique
+  description         String?
+  discount_type       CouponDiscountType @map("discount_type")
+  discount_value      Decimal           @map("discount_value") @db.Decimal(12, 2)
+  minimum_order_amount Decimal?         @map("minimum_order_amount") @db.Decimal(12, 2)
+  maximum_discount    Decimal?          @map("maximum_discount") @db.Decimal(12, 2)
+  usage_limit         Int?              @map("usage_limit")
+  usage_count         Int               @default(0) @map("usage_count")
+  starts_at           DateTime?         @map("starts_at") @db.Timestamptz
+  expires_at          DateTime?         @map("expires_at") @db.Timestamptz
+  is_active           Boolean           @default(true) @map("is_active")
+  created_at          DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updated_at          DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  usage               coupon_usage[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([expires_at])
+  @@map("coupons")
+}
+
+// Coupon usage tracking
+model coupon_usage {
+  id            String    @id @default(uuid())
+  coupon_id     String    @map("coupon_id")
+  user_id       String    @map("user_id")
+  order_id      String    @map("order_id")
+  discount_amount Decimal @map("discount_amount") @db.Decimal(12, 2)
+  created_at    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  coupon        coupons   @relation(fields: [coupon_id], references: [id], onDelete: Cascade)
+  user          profiles  @relation(fields: [user_id], references: [user_id])
+
+  @@index([coupon_id])
+  @@index([user_id])
+  @@map("coupon_usage")
+}
+
+// ============================================
+// REVIEWS
+// ============================================
+
+// Product reviews
+model reviews {
+  id          String        @id @default(uuid())
+  product_id  String        @map("product_id")
+  user_id     String        @map("user_id")
+  order_id    String?       @map("order_id")
+  rating      Int           // 1-5
+  title       String?
+  comment     String?
+  status      ReviewStatus  @default(PENDING)
+  created_at  DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updated_at  DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  product     products  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user        profiles  @relation(fields: [user_id], references: [user_id])
+
+  @@index([product_id])
+  @@index([user_id])
+  @@index([status])
+  @@map("reviews")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+// User notifications
+model notifications {
+  id        String            @id @default(uuid())
+  user_id   String            @map("user_id")
+  type      NotificationType
+  title     String
+  message   String
+  read_at   DateTime?         @map("read_at") @db.Timestamptz
+  created_at DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  user      profiles          @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([read_at])
+  @@map("notifications")
+}
+
+// ============================================
+// SYSTEM & AUDIT
+// ============================================
+
+// Audit logging for administrative actions
+model audit_logs {
+  id            String    @id @default(uuid())
+  actor_user_id String?   @map("actor_user_id")
+  action        String
+  entity_type   String    @map("entity_type")
+  entity_id     String    @map("entity_id")
+  old_values    Json?     @map("old_values")
+  new_values    Json?     @map("new_values")
+  ip_address    String?   @map("ip_address")
+  user_agent    String?   @map("user_agent")
+  created_at    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  actor         profiles? @relation("AuditActor", fields: [actor_user_id], references: [user_id])
+
+  @@index([actor_user_id])
+  @@index([entity_type, entity_id])
+  @@index([created_at])
+  @@map("audit_logs")
+}
+
+// Store settings (key-value configuration)
+model store_settings {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  value       Json
+  description String?
+  updated_by  String?   @map("updated_by")
+  updated_at  DateTime? @map("updated_at") @db.Timestamptz
+
+  @@map("store_settings")
+}
