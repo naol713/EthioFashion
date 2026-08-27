@@ -23,7 +23,9 @@ export const metadata: Metadata = {
   keywords: ["fashion", "clothing", "shoes", "Ethiopia", "online shopping"],
   authors: [{ name: "Fashion Store" }],
   creator: "Fashion Store",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+  ),
   openGraph: {
     type: "website",
     locale: "en_ET",
@@ -63,6 +65,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
 };
+export const dynamic = "force-dynamic";
 
 export default function RootLayout({
   children,
