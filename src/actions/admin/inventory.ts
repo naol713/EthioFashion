@@ -19,6 +19,7 @@ export async function adjustAdminInventory(variantId: string, quantityChange: nu
   try {
     await adjustInventory({ variantId, quantityChange, type: quantityChange > 0 ? 'RESTOCK' : 'ADJUSTMENT', note, createdBy: admin.id });
     revalidatePath('/admin/inventory');
+    revalidatePath('/admin');
     return { success: true };
   } catch (error) {
     console.error('Error adjusting inventory:', error);

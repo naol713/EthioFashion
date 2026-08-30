@@ -524,32 +524,224 @@ export async function updateProduct(input: UpdateProductInput) {
     await requireAdmin();
     const validated = updateProductSchema.partial().extend({ id: updateProductSchema.shape.id }).parse(input);
 
-    const product = await prisma.products.update({
-      where: { id: validated.id },
-      data: {
-        ...(validated.name && { name: validated.name }),
-        ...(validated.slug && { slug: validated.slug }),
-        ...(validated.description && { description: validated.description }),
-        ...(validated.short_description !== undefined && { short_description: validated.short_description }),
-        ...(validated.category_id && { category_id: validated.category_id }),
-        ...(validated.brand_id !== undefined && { brand_id: validated.brand_id }),
-        ...(validated.material !== undefined && { material: validated.material }),
-        ...(validated.gender !== undefined && { gender: validated.gender }),
-        ...(validated.status && { status: validated.status }),
-        ...(validated.featured !== undefined && { featured: validated.featured }),
-        ...(validated.imageUrl !== undefined ? {
-          images: {
-            deleteMany: { is_primary: true },
-            ...(validated.imageUrl && validated.imageUrl.trim() !== '' ? {
-              create: {
-                url: validated.imageUrl,
-                is_primary: true,
-                sort_order: 0,
-              }
-            } : {})
+    const product = await prisma.$transaction(async (tx) => {
+      // 1. Update the base product properties and primary image
+      const updatedProduct = await tx.products.update({
+        where: { id: validated.id },
+        data: {
+          ...(validated.name && { name: validated.name }),
+          ...(validated.slug && { slug: validated.slug }),
+          ...(validated.description && { description: validated.description }),
+          ...(validated.short_description !== undefined && { short_description: validated.short_description }),
+          ...(validated.category_id && { category_id: validated.category_id }),
+          ...(validated.brand_id !== undefined && { brand_id: validated.brand_id }),
+          ...(validated.material !== undefined && { material: validated.material }),
+          ...(validated.gender !== undefined && { gender: validated.gender }),
+          ...(validated.status && { status: validated.status }),
+          ...(validated.featured !== undefined && { featured: validated.featured }),
+          ...(validated.imageUrl !== undefined ? {
+            images: {
+              deleteMany: { is_primary: true },
+              ...(validated.imageUrl && validated.imageUrl.trim() !== '' ? {
+                create: {
+                  url: validated.imageUrl,
+                  is_primary: true,
+                  sort_order: 0,
+                }
+              } : {})
+            }
+          } : {}),
+        },
+      });
+
+      // 2. Update pricing, inventory, and sizes if provided
+      if (
+        validated.price !== undefined ||
+        validated.compare_at_price !== undefined ||
+        validated.stock_quantity !== undefined ||
+        validated.sizes !== undefined ||
+        validated.size_type !== undefined
+      ) {
+        // Fetch existing variants
+        const existingVariants = await tx.product_variants.findMany({
+          where: { product_id: validated.id },
+          include: { size: true, inventory: true },
+        });
+
+        // Determine size names and size type
+        const sizeNames = validated.sizes !== undefined
+          ? Array.from(new Set(validated.sizes.map((s) => s.trim()).filter(Boolean)))
+          : existingVariants.map((v) => v.size?.name).filter((name): name is string => !!name);
+
+        const sizeType = validated.size_type || existingVariants[0]?.size?.type || SizeType.CLOTHING;
+        const price = validated.price !== undefined
+          ? validated.price
+          : (existingVariants[0]?.price ? Number(existingVariants[0].price) : 0);
+        const compareAtPrice = validated.compare_at_price !== undefined
+          ? validated.compare_at_price
+          : (existingVariants[0]?.compare_at_price ? Number(existingVariants[0].compare_at_price) : null);
+        const stockQuantity = validated.stock_quantity !== undefined
+          ? validated.stock_quantity
+          : (existingVariants[0]?.inventory?.quantity ?? 0);
+
+        const variantSizeNames = sizeNames.length > 0 ? sizeNames : [null];
+        const baseSku = (validated.slug || updatedProduct.slug).toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 18);
+
+        const activeVariantIds: string[] = [];
+
+        for (let index = 0; index < variantSizeNames.length; index += 1) {
+          const sizeName = variantSizeNames[index];
+          let sizeId: string | null = null;
+
+          if (sizeName) {
+            // Find or create size
+            const existingSize = await tx.sizes.findFirst({
+              where: { name: sizeName, type: sizeType },
+            });
+
+            const sizeRecord = existingSize || await tx.sizes.create({
+              data: {
+                name: sizeName,
+                type: sizeType,
+                sort_order: index,
+              },
+            });
+
+            sizeId = sizeRecord.id;
           }
-        } : {}),
-      },
+
+          // Check if variant for this size already exists
+          const existingVariant = existingVariants.find((v) => {
+            if (sizeId === null) return v.size_id === null;
+            return v.size_id === sizeId;
+          });
+
+          if (existingVariant) {
+            // Update existing variant
+            const updatedVariant = await tx.product_variants.update({
+              where: { id: existingVariant.id },
+              data: {
+                price,
+                compare_at_price: compareAtPrice,
+                is_active: true,
+              },
+            });
+
+            activeVariantIds.push(updatedVariant.id);
+
+            // Update inventory
+            if (existingVariant.inventory) {
+              const previousQty = existingVariant.inventory.quantity;
+              await tx.inventory.update({
+                where: { id: existingVariant.inventory.id },
+                data: { quantity: stockQuantity },
+              });
+
+              if (stockQuantity !== previousQty) {
+                try {
+                  await tx.inventory_transactions.create({
+                    data: {
+                      variant_id: existingVariant.inventory.id,
+                      type: InventoryTransactionType.ADJUSTMENT,
+                      quantity: stockQuantity - previousQty,
+                      previous_quantity: previousQty,
+                      new_quantity: stockQuantity,
+                      note: 'Stock adjusted during product update',
+                    },
+                  });
+                } catch (err) {
+                  console.warn('Could not write inventory transaction:', err);
+                }
+              }
+            } else {
+              // Create inventory if it somehow doesn't exist
+              const createdInventory = await tx.inventory.create({
+                data: {
+                  variant_id: existingVariant.id,
+                  quantity: stockQuantity,
+                  reserved_quantity: 0,
+                  low_stock_threshold: 5,
+                },
+              });
+
+              try {
+                await tx.inventory_transactions.create({
+                  data: {
+                    variant_id: createdInventory.id,
+                    type: InventoryTransactionType.INITIAL_STOCK,
+                    quantity: stockQuantity,
+                    previous_quantity: 0,
+                    new_quantity: stockQuantity,
+                    note: 'Initial stock created during product update',
+                  },
+                });
+              } catch (err) {
+                console.warn('Could not write inventory transaction:', err);
+              }
+            }
+          } else {
+            // Create new variant
+            const skuSuffix = sizeName
+              ? sizeName.toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 12) || `S${index + 1}`
+              : 'STD';
+
+            const createdVariant = await tx.product_variants.create({
+              data: {
+                product_id: updatedProduct.id,
+                sku: `${baseSku}-${skuSuffix}-${Date.now().toString(36).toUpperCase()}-${index + 1}`,
+                size_id: sizeId,
+                price,
+                compare_at_price: compareAtPrice,
+                low_stock_threshold: 5,
+                is_active: true,
+              },
+            });
+
+            activeVariantIds.push(createdVariant.id);
+
+            const createdInventory = await tx.inventory.create({
+              data: {
+                variant_id: createdVariant.id,
+                quantity: stockQuantity,
+                reserved_quantity: 0,
+                low_stock_threshold: 5,
+              },
+            });
+
+            try {
+              await tx.inventory_transactions.create({
+                data: {
+                  variant_id: createdInventory.id,
+                  type: InventoryTransactionType.INITIAL_STOCK,
+                  quantity: stockQuantity,
+                  previous_quantity: 0,
+                  new_quantity: stockQuantity,
+                  note: 'Initial stock created for new variant during product update',
+                },
+              });
+            } catch (err) {
+              console.warn('Could not write inventory transaction:', err);
+            }
+          }
+        }
+
+        // Deactivate or delete variants that are not active anymore
+        const variantsToDeactivate = existingVariants.filter((v) => !activeVariantIds.includes(v.id));
+        for (const variant of variantsToDeactivate) {
+          try {
+            await tx.inventory.delete({ where: { variant_id: variant.id } });
+            await tx.product_variants.delete({ where: { id: variant.id } });
+          } catch (deleteError) {
+            // If delete fails due to foreign keys (like active orders), set is_active = false
+            await tx.product_variants.update({
+              where: { id: variant.id },
+              data: { is_active: false },
+            });
+          }
+        }
+      }
+
+      return updatedProduct;
     });
 
     revalidatePath('/products');

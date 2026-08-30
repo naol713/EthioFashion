@@ -4,10 +4,23 @@ import { useState } from 'react';
 
 const clothingSizes = ['S', 'M', 'L'];
 
-export function ProductSizeFields() {
-  const [sizeType, setSizeType] = useState<'CLOTHING' | 'SHOE'>('CLOTHING');
-  const [clothingSizesSelected, setClothingSizesSelected] = useState<string[]>(clothingSizes);
-  const [shoeSizesValue, setShoeSizesValue] = useState('');
+interface ProductSizeFieldsProps {
+  initialSizeType?: 'CLOTHING' | 'SHOE';
+  initialSizes?: string[];
+}
+
+export function ProductSizeFields({ initialSizeType = 'CLOTHING', initialSizes }: ProductSizeFieldsProps) {
+  const [sizeType, setSizeType] = useState<'CLOTHING' | 'SHOE'>(initialSizeType);
+  const [clothingSizesSelected, setClothingSizesSelected] = useState<string[]>(
+    initialSizeType === 'CLOTHING' && initialSizes
+      ? initialSizes
+      : clothingSizes
+  );
+  const [shoeSizesValue, setShoeSizesValue] = useState(
+    initialSizeType === 'SHOE' && initialSizes
+      ? initialSizes.join(', ')
+      : ''
+  );
 
   return (
     <div className="space-y-4 rounded-lg border border-gray-200 p-5">

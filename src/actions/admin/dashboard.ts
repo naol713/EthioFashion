@@ -5,12 +5,17 @@ import { prisma } from '@/lib/db/prisma';
 
 export async function getAdminDashboard() {
   await requireAdmin();
-  const [orders, revenue, customers, products, lowStock, pendingOrders] = await Promise.all([
+  const [orders, revenue, customers, products, lowStockResult, pendingOrders] = await Promise.all([
     prisma.orders.count(),
     prisma.orders.aggregate({ _sum: { total_amount: true }, where: { payment_status: 'PAID' } }),
     prisma.profiles.count(),
     prisma.products.count(),
-    prisma.inventory.count({ where: { quantity: { lte: 5 } } }),
+    // Count inventory records where available stock (quantity - reserved) is at or below the variant's own threshold
+    prisma.$queryRaw<Array<{ count: string }>>`
+      SELECT COUNT(*)::text AS count
+      FROM inventory
+      WHERE (quantity - reserved_quantity) <= low_stock_threshold
+    `,
     prisma.orders.count({ where: { status: 'PENDING_PAYMENT' } }),
   ]);
   return {
@@ -18,7 +23,7 @@ export async function getAdminDashboard() {
     totalRevenue: Number(revenue._sum.total_amount ?? 0),
     totalCustomers: customers,
     totalProducts: products,
-    lowStockProducts: lowStock,
+    lowStockProducts: parseInt(lowStockResult[0]?.count ?? '0', 10),
     pendingOrders,
   };
 }
