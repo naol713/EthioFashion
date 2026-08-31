@@ -1,10 +1,20 @@
-'use server';
+"use server";
 
-import { prisma } from '@/lib/db/prisma';
-import { productSchema, updateProductSchema, type ProductInput, type UpdateProductInput } from '@/schemas/product';
-import { InventoryTransactionType, ProductGender, ProductStatus, SizeType } from '@prisma/client';
-import { revalidatePath } from 'next/cache';
-import { requireAdmin } from '@/lib/auth';
+import { prisma } from "@/lib/db/prisma";
+import {
+  productSchema,
+  updateProductSchema,
+  type ProductInput,
+  type UpdateProductInput,
+} from "@/schemas/product";
+import {
+  InventoryTransactionType,
+  ProductGender,
+  ProductStatus,
+  SizeType,
+} from "@prisma/client";
+import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/lib/auth";
 
 export interface ProductFilterParams {
   categorySlug?: string;
@@ -14,93 +24,121 @@ export interface ProductFilterParams {
   minPrice?: number;
   maxPrice?: number;
   featured?: boolean;
-  sortBy?: 'featured' | 'newest' | 'price-asc' | 'price-desc';
+  sortBy?: "featured" | "newest" | "price-asc" | "price-desc";
   page?: number;
   limit?: number;
 }
 
 const sampleProducts = [
   {
-    id: 'p1',
-    name: 'Royal Habesha Kemis',
-    slug: 'royal-habesha-kemis',
-    short_description: 'Pure cotton handwoven Ethiopian dress with gold border embroidery.',
-    description: 'Authentic handwoven Ethiopian dress woven from pure organic cotton with intricate gold embroidery.',
-    gender: 'FEMALE',
+    id: "p1",
+    name: "Royal Habesha Kemis",
+    slug: "royal-habesha-kemis",
+    short_description:
+      "Pure cotton handwoven Ethiopian dress with gold border embroidery.",
+    description:
+      "Authentic handwoven Ethiopian dress woven from pure organic cotton with intricate gold embroidery.",
+    gender: "FEMALE",
     featured: true,
-    category: { id: 'c1', name: 'Women\'s Dresses', slug: 'women' },
-    brand: { id: 'b1', name: 'Habesha Threads', slug: 'habesha-threads' },
-    images: [{ url: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=800&q=80', alt_text: 'Habesha Kemis' }],
+    category: { id: "c1", name: "Women's Dresses", slug: "women" },
+    brand: { id: "b1", name: "Habesha Threads", slug: "habesha-threads" },
+    images: [
+      {
+        url: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=800&q=80",
+        alt_text: "Habesha Kemis",
+      },
+    ],
     variants: [
       {
-        id: 'v1',
-        sku: 'RHK-GLD-M',
+        id: "v1",
+        sku: "RHK-GLD-M",
         price: 4500,
         compare_at_price: 5200,
-        color: { name: 'Gold', hex_code: '#D4AF37' },
-        size: { name: 'M' },
-        inventory: { quantity: 10, reserved_quantity: 0, low_stock_threshold: 3 }
-      }
+        color: { name: "Gold", hex_code: "#D4AF37" },
+        size: { name: "M" },
+        inventory: {
+          quantity: 10,
+          reserved_quantity: 0,
+          low_stock_threshold: 3,
+        },
+      },
     ],
   },
   {
-    id: 'p2',
-    name: 'Highland Leather Heritage Boots',
-    slug: 'highland-leather-heritage-boots',
-    short_description: 'Full-grain handcrafted Ethiopian leather boots.',
-    description: 'Handcrafted premium leather boots made from locally sourced Ethiopian full-grain leather.',
-    gender: 'MALE',
+    id: "p2",
+    name: "Highland Leather Heritage Boots",
+    slug: "highland-leather-heritage-boots",
+    short_description: "Full-grain handcrafted Ethiopian leather boots.",
+    description:
+      "Handcrafted premium leather boots made from locally sourced Ethiopian full-grain leather.",
+    gender: "MALE",
     featured: true,
-    category: { id: 'c2', name: 'Men\'s Shoes', slug: 'shoes' },
-    brand: { id: 'b2', name: 'Abyssinia Kicks', slug: 'abyssinia-kicks' },
-    images: [{ url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80', alt_text: 'Leather Boots' }],
+    category: { id: "c2", name: "Men's Shoes", slug: "shoes" },
+    brand: { id: "b2", name: "Abyssinia Kicks", slug: "abyssinia-kicks" },
+    images: [
+      {
+        url: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80",
+        alt_text: "Leather Boots",
+      },
+    ],
     variants: [
       {
-        id: 'v2',
-        sku: 'HLB-BRN-42',
+        id: "v2",
+        sku: "HLB-BRN-42",
         price: 3800,
         compare_at_price: 4200,
-        color: { name: 'Brown', hex_code: '#8B4513' },
-        size: { name: '42' },
-        inventory: { quantity: 5, reserved_quantity: 0, low_stock_threshold: 2 }
-      }
+        color: { name: "Brown", hex_code: "#8B4513" },
+        size: { name: "42" },
+        inventory: {
+          quantity: 5,
+          reserved_quantity: 0,
+          low_stock_threshold: 2,
+        },
+      },
     ],
   },
   {
-    id: 'p3',
-    name: 'Modern Addis Linen Blazer',
-    slug: 'modern-addis-linen-blazer',
-    short_description: 'Lightweight linen modern tailored blazer.',
-    description: 'Sharp, lightweight linen blazer designed for modern professional wear.',
-    gender: 'MALE',
+    id: "p3",
+    name: "Modern Addis Linen Blazer",
+    slug: "modern-addis-linen-blazer",
+    short_description: "Lightweight linen modern tailored blazer.",
+    description:
+      "Sharp, lightweight linen blazer designed for modern professional wear.",
+    gender: "MALE",
     featured: true,
-    category: { id: 'c3', name: 'Men\'s Clothing', slug: 'men' },
-    brand: { id: 'b3', name: 'Addis Couture', slug: 'addis-couture' },
-    images: [{ url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=800&q=80', alt_text: 'Linen Blazer' }],
+    category: { id: "c3", name: "Men's Clothing", slug: "men" },
+    brand: { id: "b3", name: "Addis Couture", slug: "addis-couture" },
+    images: [
+      {
+        url: "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=800&q=80",
+        alt_text: "Linen Blazer",
+      },
+    ],
     variants: [
       {
-        id: 'v3',
-        sku: 'ALB-BLU-L',
+        id: "v3",
+        sku: "ALB-BLU-L",
         price: 4200,
         compare_at_price: 4800,
-        color: { name: 'Blue', hex_code: '#0000FF' },
-        size: { name: 'L' },
-        inventory: { quantity: 8, reserved_quantity: 0, low_stock_threshold: 2 }
-      }
+        color: { name: "Blue", hex_code: "#0000FF" },
+        size: { name: "L" },
+        inventory: {
+          quantity: 8,
+          reserved_quantity: 0,
+          low_stock_threshold: 2,
+        },
+      },
     ],
   },
 ];
 
 type SampleProduct = (typeof sampleProducts)[number];
 
-function matchesProductFilters(product: SampleProduct, params: ProductFilterParams) {
-  const {
-    categorySlug,
-    brandSlug,
-    gender,
-    query,
-    featured,
-  } = params;
+function matchesProductFilters(
+  product: SampleProduct,
+  params: ProductFilterParams,
+) {
+  const { categorySlug, brandSlug, gender, query, featured } = params;
 
   if (featured && !product.featured) return false;
   if (gender && product.gender !== gender) return false;
@@ -117,7 +155,7 @@ function matchesProductFilters(product: SampleProduct, params: ProductFilterPara
       product.brand?.name,
     ]
       .filter(Boolean)
-      .join(' ')
+      .join(" ")
       .toLowerCase();
 
     if (!haystack.includes(needle)) return false;
@@ -126,14 +164,23 @@ function matchesProductFilters(product: SampleProduct, params: ProductFilterPara
   return true;
 }
 
-function sortSampleProducts(products: SampleProduct[], sortBy: ProductFilterParams['sortBy']) {
+function sortSampleProducts(
+  products: SampleProduct[],
+  sortBy: ProductFilterParams["sortBy"],
+) {
   const sorted = [...products];
-  if (sortBy === 'newest') return sorted;
-  if (sortBy === 'price-asc') {
-    return sorted.sort((a, b) => Number(a.variants[0]?.price ?? 0) - Number(b.variants[0]?.price ?? 0));
+  if (sortBy === "newest") return sorted;
+  if (sortBy === "price-asc") {
+    return sorted.sort(
+      (a, b) =>
+        Number(a.variants[0]?.price ?? 0) - Number(b.variants[0]?.price ?? 0),
+    );
   }
-  if (sortBy === 'price-desc') {
-    return sorted.sort((a, b) => Number(b.variants[0]?.price ?? 0) - Number(a.variants[0]?.price ?? 0));
+  if (sortBy === "price-desc") {
+    return sorted.sort(
+      (a, b) =>
+        Number(b.variants[0]?.price ?? 0) - Number(a.variants[0]?.price ?? 0),
+    );
   }
 
   return sorted.sort((a, b) => Number(b.featured) - Number(a.featured));
@@ -146,6 +193,36 @@ function filterSampleProducts(params: ProductFilterParams) {
   );
 }
 
+async function getCategoryIdsBySlug(slug: string): Promise<string[]> {
+  const category = await prisma.categories.findUnique({
+    where: { slug },
+    include: {
+      children: {
+        include: {
+          children: true,
+        },
+      },
+    },
+  });
+
+  if (!category) return [];
+
+  const ids: string[] = [category.id];
+
+  if (category.children) {
+    for (const child of category.children) {
+      ids.push(child.id);
+      if (child.children) {
+        for (const grandChild of child.children) {
+          ids.push(grandChild.id);
+        }
+      }
+    }
+  }
+
+  return ids;
+}
+
 export async function getProducts(params: ProductFilterParams = {}) {
   try {
     const {
@@ -156,7 +233,7 @@ export async function getProducts(params: ProductFilterParams = {}) {
       minPrice,
       maxPrice,
       featured,
-      sortBy = 'featured',
+      sortBy = "featured",
       page = 1,
       limit = 12,
     } = params;
@@ -175,33 +252,42 @@ export async function getProducts(params: ProductFilterParams = {}) {
 
     if (query) {
       where.OR = [
-        { name: { contains: query, mode: 'insensitive' } },
-        { description: { contains: query, mode: 'insensitive' } },
-        { short_description: { contains: query, mode: 'insensitive' } },
+        { name: { contains: query, mode: "insensitive" } },
+        { description: { contains: query, mode: "insensitive" } },
+        { short_description: { contains: query, mode: "insensitive" } },
       ];
     }
 
     if (categorySlug) {
-      where.category = {
-        OR: [
-          { slug: categorySlug },
-          { parent: { slug: categorySlug } },
-        ],
-      };
+      const categoryIds = await getCategoryIdsBySlug(categorySlug);
+      where.category_id = { in: categoryIds };
     }
 
     if (brandSlug) {
       where.brand = { slug: brandSlug };
     }
 
-    let orderBy: any = { created_at: 'desc' };
-    if (sortBy === 'featured') {
-      orderBy = [
-        { featured: 'desc' },
-        { created_at: 'desc' },
-      ];
-    } else if (sortBy === 'newest') {
-      orderBy = { created_at: 'desc' };
+    let orderBy: any = { created_at: "desc" };
+    if (sortBy === "featured") {
+      orderBy = [{ featured: "desc" }, { created_at: "desc" }];
+    } else if (sortBy === "newest") {
+      orderBy = { created_at: "desc" };
+    } else if (sortBy === "price-asc") {
+      orderBy = {
+        variants: {
+          _min: {
+            price: "asc",
+          },
+        },
+      };
+    } else if (sortBy === "price-desc") {
+      orderBy = {
+        variants: {
+          _max: {
+            price: "desc",
+          },
+        },
+      };
     }
 
     const skip = (page - 1) * limit;
@@ -213,7 +299,7 @@ export async function getProducts(params: ProductFilterParams = {}) {
           category: { select: { id: true, name: true, slug: true } },
           brand: { select: { id: true, name: true, slug: true } },
           images: {
-            orderBy: { sort_order: 'asc' },
+            orderBy: { sort_order: "asc" },
             take: 2,
           },
           variants: {
@@ -223,7 +309,7 @@ export async function getProducts(params: ProductFilterParams = {}) {
               size: true,
               inventory: true,
             },
-            orderBy: { price: 'asc' },
+            orderBy: { price: "asc" },
           },
         },
         orderBy,
@@ -234,7 +320,7 @@ export async function getProducts(params: ProductFilterParams = {}) {
     ]).catch(() => [[], 0] as const);
 
     const products = Array.isArray(productsResult) ? productsResult : [];
-    const total = typeof totalResult === 'number' ? totalResult : 0;
+    const total = typeof totalResult === "number" ? totalResult : 0;
 
     const fallbackProducts = filterSampleProducts(params);
     const finalProducts = products.length > 0 ? products : fallbackProducts;
@@ -251,10 +337,10 @@ export async function getProducts(params: ProductFilterParams = {}) {
       },
     };
   } catch (error: any) {
-    console.error('Error fetching products:', error);
+    console.error("Error fetching products:", error);
     return {
       success: false,
-      error: 'Failed to fetch products',
+      error: "Failed to fetch products",
       data: filterSampleProducts(params),
       pagination: {
         page: 1,
@@ -273,7 +359,7 @@ export async function getAdminProducts(limit = 100) {
         category: { select: { id: true, name: true, slug: true } },
         brand: { select: { id: true, name: true, slug: true } },
         images: {
-          orderBy: { sort_order: 'asc' },
+          orderBy: { sort_order: "asc" },
           take: 1,
         },
         variants: {
@@ -282,10 +368,10 @@ export async function getAdminProducts(limit = 100) {
             size: true,
             inventory: true,
           },
-          orderBy: { price: 'asc' },
+          orderBy: { price: "asc" },
         },
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: { created_at: "desc" },
       take: limit,
     });
 
@@ -300,10 +386,10 @@ export async function getAdminProducts(limit = 100) {
       },
     };
   } catch (error: any) {
-    console.error('Error fetching admin products:', error);
+    console.error("Error fetching admin products:", error);
     return {
       success: false,
-      error: error.message || 'Failed to fetch admin products',
+      error: error.message || "Failed to fetch admin products",
       data: [],
       pagination: {
         page: 1,
@@ -323,7 +409,7 @@ export async function getProductBySlug(slug: string) {
         category: true,
         brand: true,
         images: {
-          orderBy: { sort_order: 'asc' },
+          orderBy: { sort_order: "asc" },
         },
         variants: {
           where: { is_active: true },
@@ -332,49 +418,87 @@ export async function getProductBySlug(slug: string) {
             size: true,
             inventory: true,
           },
-          orderBy: { price: 'asc' },
+          orderBy: { price: "asc" },
         },
         reviews: {
-          where: { status: 'APPROVED' },
+          where: { status: "APPROVED" },
           include: {
-            user: { select: { first_name: true, last_name: true, avatar_url: true } },
+            user: {
+              select: { first_name: true, last_name: true, avatar_url: true },
+            },
           },
-          orderBy: { created_at: 'desc' },
+          orderBy: { created_at: "desc" },
         },
       },
     });
 
     if (!product || product.status !== ProductStatus.ACTIVE) {
-      const sample = sampleProducts.find(p => p.slug === slug);
+      const sample = sampleProducts.find((p) => p.slug === slug);
       if (sample) {
         return { success: true, data: sample };
       }
-      return { success: false, error: 'Product not found' };
+      return { success: false, error: "Product not found" };
     }
 
     return { success: true, data: product };
   } catch (error: any) {
-    console.error('Error fetching product by slug:', error);
+    console.error("Error fetching product by slug:", error);
 
     const fallbackProduct = {
-      id: 'p1',
-      name: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      id: "p1",
+      name: slug
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" "),
       slug,
-      description: 'Handcrafted premium Ethiopian apparel designed with authentic traditional elements and modern elegance.',
-      short_description: 'Authentic Ethiopian clothing piece.',
-      material: '100% Ethiopian Cotton / Genuine Leather',
+      description:
+        "Handcrafted premium Ethiopian apparel designed with authentic traditional elements and modern elegance.",
+      short_description: "Authentic Ethiopian clothing piece.",
+      material: "100% Ethiopian Cotton / Genuine Leather",
       gender: ProductGender.UNISEX,
       status: ProductStatus.ACTIVE,
       featured: true,
-      category: { id: 'c1', name: 'Fashion & Apparel', slug: 'fashion' },
-      brand: { id: 'b1', name: 'EthioFashion Brand', slug: 'ethiofashion' },
+      category: { id: "c1", name: "Fashion & Apparel", slug: "fashion" },
+      brand: { id: "b1", name: "EthioFashion Brand", slug: "ethiofashion" },
       images: [
-        { id: 'i1', url: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=800&q=80', alt_text: 'Product detail' },
-        { id: 'i2', url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80', alt_text: 'Product side view' }
+        {
+          id: "i1",
+          url: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=800&q=80",
+          alt_text: "Product detail",
+        },
+        {
+          id: "i2",
+          url: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80",
+          alt_text: "Product side view",
+        },
       ],
       variants: [
-        { id: 'v1', sku: 'SKU-SM', price: 3800, compare_at_price: 4500, color: { name: 'Gold', hex_code: '#D4AF37' }, size: { name: 'M' }, inventory: { quantity: 10, reserved_quantity: 0, low_stock_threshold: 3 } },
-        { id: 'v2', sku: 'SKU-LG', price: 4200, compare_at_price: 4800, color: { name: 'Black', hex_code: '#000000' }, size: { name: 'L' }, inventory: { quantity: 10, reserved_quantity: 0, low_stock_threshold: 3 } },
+        {
+          id: "v1",
+          sku: "SKU-SM",
+          price: 3800,
+          compare_at_price: 4500,
+          color: { name: "Gold", hex_code: "#D4AF37" },
+          size: { name: "M" },
+          inventory: {
+            quantity: 10,
+            reserved_quantity: 0,
+            low_stock_threshold: 3,
+          },
+        },
+        {
+          id: "v2",
+          sku: "SKU-LG",
+          price: 4200,
+          compare_at_price: 4800,
+          color: { name: "Black", hex_code: "#000000" },
+          size: { name: "L" },
+          inventory: {
+            quantity: 10,
+            reserved_quantity: 0,
+            low_stock_threshold: 3,
+          },
+        },
       ],
       reviews: [],
     };
@@ -398,14 +522,15 @@ export async function createProduct(input: ProductInput) {
     });
 
     if (existingSlug) {
-      return { success: false, error: 'A product with this slug already exists' };
+      return {
+        success: false,
+        error: "A product with this slug already exists",
+      };
     }
 
     const sizeNames = Array.from(
       new Set(
-        (validated.sizes || [])
-          .map((size) => size.trim())
-          .filter(Boolean),
+        (validated.sizes || []).map((size) => size.trim()).filter(Boolean),
       ),
     );
     const sizeType = validated.size_type ?? SizeType.CLOTHING;
@@ -423,20 +548,25 @@ export async function createProduct(input: ProductInput) {
           gender: validated.gender || null,
           status: validated.status,
           featured: validated.featured,
-          ...(validated.imageUrl && validated.imageUrl.trim() !== '' ? {
-            images: {
-              create: {
-                url: validated.imageUrl,
-                is_primary: true,
-                sort_order: 0,
+          ...(validated.imageUrl && validated.imageUrl.trim() !== ""
+            ? {
+                images: {
+                  create: {
+                    url: validated.imageUrl,
+                    is_primary: true,
+                    sort_order: 0,
+                  },
+                },
               }
-            }
-          } : {})
+            : {}),
         },
       });
 
       const variantSizeNames = sizeNames.length > 0 ? sizeNames : [null];
-      const baseSku = validated.slug.toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 18);
+      const baseSku = validated.slug
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "-")
+        .slice(0, 18);
 
       for (let index = 0; index < variantSizeNames.length; index += 1) {
         const sizeName = variantSizeNames[index];
@@ -450,20 +580,25 @@ export async function createProduct(input: ProductInput) {
             },
           });
 
-          const sizeRecord = existingSize || await tx.sizes.create({
-            data: {
-              name: sizeName,
-              type: sizeType,
-              sort_order: index,
-            },
-          });
+          const sizeRecord =
+            existingSize ||
+            (await tx.sizes.create({
+              data: {
+                name: sizeName,
+                type: sizeType,
+                sort_order: index,
+              },
+            }));
 
           sizeId = sizeRecord.id;
         }
 
         const skuSuffix = sizeName
-          ? sizeName.toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 12) || `S${index + 1}`
-          : 'STD';
+          ? sizeName
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, "-")
+              .slice(0, 12) || `S${index + 1}`
+          : "STD";
 
         const createdVariant = await tx.product_variants.create({
           data: {
@@ -496,11 +631,14 @@ export async function createProduct(input: ProductInput) {
                 quantity: validated.stock_quantity,
                 previous_quantity: 0,
                 new_quantity: validated.stock_quantity,
-                note: 'Initial product creation stock',
+                note: "Initial product creation stock",
               },
             });
           } catch (inventoryError) {
-            console.warn('Initial stock audit log could not be written:', inventoryError);
+            console.warn(
+              "Initial stock audit log could not be written:",
+              inventoryError,
+            );
           }
         }
       }
@@ -508,13 +646,16 @@ export async function createProduct(input: ProductInput) {
       return createdProduct;
     });
 
-    revalidatePath('/products');
-    revalidatePath('/admin/products');
+    revalidatePath("/products");
+    revalidatePath("/admin/products");
 
     return { success: true, data: product };
   } catch (error: any) {
-    console.error('Error creating product:', error);
-    return { success: false, error: error.message || 'Failed to create product' };
+    console.error("Error creating product:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to create product",
+    };
   }
 }
 
@@ -522,7 +663,10 @@ export async function createProduct(input: ProductInput) {
 export async function updateProduct(input: UpdateProductInput) {
   try {
     await requireAdmin();
-    const validated = updateProductSchema.partial().extend({ id: updateProductSchema.shape.id }).parse(input);
+    const validated = updateProductSchema
+      .partial()
+      .extend({ id: updateProductSchema.shape.id })
+      .parse(input);
 
     const product = await prisma.$transaction(async (tx) => {
       // 1. Update the base product properties and primary image
@@ -532,25 +676,37 @@ export async function updateProduct(input: UpdateProductInput) {
           ...(validated.name && { name: validated.name }),
           ...(validated.slug && { slug: validated.slug }),
           ...(validated.description && { description: validated.description }),
-          ...(validated.short_description !== undefined && { short_description: validated.short_description }),
+          ...(validated.short_description !== undefined && {
+            short_description: validated.short_description,
+          }),
           ...(validated.category_id && { category_id: validated.category_id }),
-          ...(validated.brand_id !== undefined && { brand_id: validated.brand_id }),
-          ...(validated.material !== undefined && { material: validated.material }),
+          ...(validated.brand_id !== undefined && {
+            brand_id: validated.brand_id,
+          }),
+          ...(validated.material !== undefined && {
+            material: validated.material,
+          }),
           ...(validated.gender !== undefined && { gender: validated.gender }),
           ...(validated.status && { status: validated.status }),
-          ...(validated.featured !== undefined && { featured: validated.featured }),
-          ...(validated.imageUrl !== undefined ? {
-            images: {
-              deleteMany: { is_primary: true },
-              ...(validated.imageUrl && validated.imageUrl.trim() !== '' ? {
-                create: {
-                  url: validated.imageUrl,
-                  is_primary: true,
-                  sort_order: 0,
-                }
-              } : {})
-            }
-          } : {}),
+          ...(validated.featured !== undefined && {
+            featured: validated.featured,
+          }),
+          ...(validated.imageUrl !== undefined
+            ? {
+                images: {
+                  deleteMany: { is_primary: true },
+                  ...(validated.imageUrl && validated.imageUrl.trim() !== ""
+                    ? {
+                        create: {
+                          url: validated.imageUrl,
+                          is_primary: true,
+                          sort_order: 0,
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         },
       });
 
@@ -569,23 +725,41 @@ export async function updateProduct(input: UpdateProductInput) {
         });
 
         // Determine size names and size type
-        const sizeNames = validated.sizes !== undefined
-          ? Array.from(new Set(validated.sizes.map((s) => s.trim()).filter(Boolean)))
-          : existingVariants.map((v) => v.size?.name).filter((name): name is string => !!name);
+        const sizeNames =
+          validated.sizes !== undefined
+            ? Array.from(
+                new Set(validated.sizes.map((s) => s.trim()).filter(Boolean)),
+              )
+            : existingVariants
+                .map((v) => v.size?.name)
+                .filter((name): name is string => !!name);
 
-        const sizeType = validated.size_type || existingVariants[0]?.size?.type || SizeType.CLOTHING;
-        const price = validated.price !== undefined
-          ? validated.price
-          : (existingVariants[0]?.price ? Number(existingVariants[0].price) : 0);
-        const compareAtPrice = validated.compare_at_price !== undefined
-          ? validated.compare_at_price
-          : (existingVariants[0]?.compare_at_price ? Number(existingVariants[0].compare_at_price) : null);
-        const stockQuantity = validated.stock_quantity !== undefined
-          ? validated.stock_quantity
-          : (existingVariants[0]?.inventory?.quantity ?? 0);
+        const sizeType =
+          validated.size_type ||
+          existingVariants[0]?.size?.type ||
+          SizeType.CLOTHING;
+        const price =
+          validated.price !== undefined
+            ? validated.price
+            : existingVariants[0]?.price
+              ? Number(existingVariants[0].price)
+              : 0;
+        const compareAtPrice =
+          validated.compare_at_price !== undefined
+            ? validated.compare_at_price
+            : existingVariants[0]?.compare_at_price
+              ? Number(existingVariants[0].compare_at_price)
+              : null;
+        const stockQuantity =
+          validated.stock_quantity !== undefined
+            ? validated.stock_quantity
+            : (existingVariants[0]?.inventory?.quantity ?? 0);
 
         const variantSizeNames = sizeNames.length > 0 ? sizeNames : [null];
-        const baseSku = (validated.slug || updatedProduct.slug).toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 18);
+        const baseSku = (validated.slug || updatedProduct.slug)
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "-")
+          .slice(0, 18);
 
         const activeVariantIds: string[] = [];
 
@@ -599,13 +773,15 @@ export async function updateProduct(input: UpdateProductInput) {
               where: { name: sizeName, type: sizeType },
             });
 
-            const sizeRecord = existingSize || await tx.sizes.create({
-              data: {
-                name: sizeName,
-                type: sizeType,
-                sort_order: index,
-              },
-            });
+            const sizeRecord =
+              existingSize ||
+              (await tx.sizes.create({
+                data: {
+                  name: sizeName,
+                  type: sizeType,
+                  sort_order: index,
+                },
+              }));
 
             sizeId = sizeRecord.id;
           }
@@ -646,11 +822,11 @@ export async function updateProduct(input: UpdateProductInput) {
                       quantity: stockQuantity - previousQty,
                       previous_quantity: previousQty,
                       new_quantity: stockQuantity,
-                      note: 'Stock adjusted during product update',
+                      note: "Stock adjusted during product update",
                     },
                   });
                 } catch (err) {
-                  console.warn('Could not write inventory transaction:', err);
+                  console.warn("Could not write inventory transaction:", err);
                 }
               }
             } else {
@@ -672,18 +848,21 @@ export async function updateProduct(input: UpdateProductInput) {
                     quantity: stockQuantity,
                     previous_quantity: 0,
                     new_quantity: stockQuantity,
-                    note: 'Initial stock created during product update',
+                    note: "Initial stock created during product update",
                   },
                 });
               } catch (err) {
-                console.warn('Could not write inventory transaction:', err);
+                console.warn("Could not write inventory transaction:", err);
               }
             }
           } else {
             // Create new variant
             const skuSuffix = sizeName
-              ? sizeName.toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 12) || `S${index + 1}`
-              : 'STD';
+              ? sizeName
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9]/g, "-")
+                  .slice(0, 12) || `S${index + 1}`
+              : "STD";
 
             const createdVariant = await tx.product_variants.create({
               data: {
@@ -716,17 +895,19 @@ export async function updateProduct(input: UpdateProductInput) {
                   quantity: stockQuantity,
                   previous_quantity: 0,
                   new_quantity: stockQuantity,
-                  note: 'Initial stock created for new variant during product update',
+                  note: "Initial stock created for new variant during product update",
                 },
               });
             } catch (err) {
-              console.warn('Could not write inventory transaction:', err);
+              console.warn("Could not write inventory transaction:", err);
             }
           }
         }
 
         // Deactivate or delete variants that are not active anymore
-        const variantsToDeactivate = existingVariants.filter((v) => !activeVariantIds.includes(v.id));
+        const variantsToDeactivate = existingVariants.filter(
+          (v) => !activeVariantIds.includes(v.id),
+        );
         for (const variant of variantsToDeactivate) {
           try {
             await tx.inventory.delete({ where: { variant_id: variant.id } });
@@ -744,13 +925,16 @@ export async function updateProduct(input: UpdateProductInput) {
       return updatedProduct;
     });
 
-    revalidatePath('/products');
-    revalidatePath('/admin/products');
+    revalidatePath("/products");
+    revalidatePath("/admin/products");
 
     return { success: true, data: product };
   } catch (error: any) {
-    console.error('Error updating product:', error);
-    return { success: false, error: error.message || 'Failed to update product' };
+    console.error("Error updating product:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to update product",
+    };
   }
 }
 
@@ -765,12 +949,15 @@ export async function archiveProduct(productId: string) {
       },
     });
 
-    revalidatePath('/products');
-    revalidatePath('/admin/products');
+    revalidatePath("/products");
+    revalidatePath("/admin/products");
 
     return { success: true, data: product };
   } catch (error: any) {
-    console.error('Error archiving product:', error);
-    return { success: false, error: error.message || 'Failed to archive product' };
+    console.error("Error archiving product:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to archive product",
+    };
   }
 }

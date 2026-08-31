@@ -20,6 +20,27 @@ export async function getOrders() {
   }
 }
 
+export async function getOrderByNumberAdmin(orderNumber: string) {
+  await requireAdmin();
+
+  try {
+    const order = await prisma.orders.findFirst({
+      where: { order_number: orderNumber },
+      include: {
+        user: true,
+        items: true,
+        payment: true,
+        address: true,
+        status_history: { orderBy: { created_at: 'asc' } },
+      },
+    });
+    return order ? { success: true, order } : { success: false, error: 'Order not found', order: null };
+  } catch (error) {
+    console.error('Error fetching order (admin):', error);
+    return { success: false, error: 'Failed to fetch order', order: null };
+  }
+}
+
 export async function getOrderByNumber(orderNumber: string) {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: 'Not authenticated', order: null };

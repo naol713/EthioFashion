@@ -80,7 +80,7 @@ export async function adjustInventory(params: {
     // Record audit transaction
     const transaction = await tx.inventory_transactions.create({
       data: {
-        variant_id: variantId,
+        variant_id: current.id,   // FK → inventory.id (not product_variants.id)
         type,
         quantity: Math.abs(quantityChange),
         previous_quantity: previousQuantity,

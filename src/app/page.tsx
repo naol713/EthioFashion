@@ -9,12 +9,15 @@ import { getFeaturedProducts } from '@/actions/products';
 import { getCategories } from '@/actions/categories';
 import { getWishlist } from '@/actions/wishlist';
 import { ProductCard } from '@/components/product/product-card';
+import { prisma } from '@/lib/db/prisma';
 import { ArrowRight, Heart, ShoppingBag, Users } from 'lucide-react';
 
 export default async function Home() {
-  const [featuredRes, categoriesRes] = await Promise.all([
+  const [featuredRes, categoriesRes, productCount, customerCount] = await Promise.all([
     getFeaturedProducts(6),
     getCategories(),
+    prisma.products.count({ where: { deleted_at: null } }),
+    prisma.profiles.count(),
   ]);
   const wishlistRes = await getWishlist();
 
@@ -168,8 +171,8 @@ export default async function Home() {
                 <div className="grid grid-cols-3 gap-4 sm:gap-6">
                   {[
                     { value: '50+', label: 'Local Artisans', icon: Users },
-                    { value: '200+', label: 'Products', icon: ShoppingBag },
-                    { value: '2K+', label: 'Happy Customers', icon: Heart },
+                    { value: `${productCount}+`, label: 'Products', icon: ShoppingBag },
+                    { value: customerCount >= 1000 ? `${(customerCount / 1000).toFixed(1).replace(/\.0$/, '')}K+` : `${customerCount}+`, label: 'Happy Customers', icon: Heart },
                   ].map(({ value, label, icon: Icon }) => (
                     <div key={label} className="pr-4 last:pr-0">
                       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
