@@ -34,7 +34,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
           </div>
           <div className="text-sm space-y-1 text-gray-700">
             <p className="font-medium">{order.user.first_name} {order.user.last_name}</p>
-            <p className="text-gray-500">{order.user.email}</p>
+            {order.user.phone && <p className="text-gray-500">{order.user.phone}</p>}
           </div>
         </div>
 
@@ -57,10 +57,10 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
               <span className="text-gray-500">Delivery</span>
               <span className="font-medium">{order.delivery_status.replaceAll('_', ' ')}</span>
             </div>
-            {order.payment?.payment_method && (
+            {order.payment?.method && (
               <div className="flex justify-between">
                 <span className="text-gray-500">Method</span>
-                <span className="font-medium">{order.payment.payment_method.replaceAll('_', ' ')}</span>
+                <span className="font-medium">{order.payment.method.replaceAll('_', ' ')}</span>
               </div>
             )}
           </div>
@@ -114,18 +114,23 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
           <h3 className="font-semibold">Items ordered</h3>
         </div>
         <div className="divide-y">
-          {order.items.map((item) => (
-            <div key={item.id} className="py-3 flex justify-between items-start gap-4 text-sm">
-              <div>
-                <p className="font-medium">{item.product_name_snapshot}</p>
-                {item.variant_snapshot && (
-                  <p className="text-gray-500 text-xs mt-0.5">{String(item.variant_snapshot)}</p>
-                )}
-                <p className="text-gray-500 text-xs">Qty: {item.quantity} × {Number(item.unit_price).toLocaleString()} {order.currency}</p>
+          {order.items.map((item) => {
+            const variantInfo = [item.sku_snapshot, item.size_snapshot, item.color_snapshot]
+              .filter(Boolean)
+              .join(' / ');
+            return (
+              <div key={item.id} className="py-3 flex justify-between items-start gap-4 text-sm">
+                <div>
+                  <p className="font-medium">{item.product_name_snapshot}</p>
+                  {variantInfo && (
+                    <p className="text-gray-500 text-xs mt-0.5">{variantInfo}</p>
+                  )}
+                  <p className="text-gray-500 text-xs">Qty: {item.quantity} × {Number(item.unit_price).toLocaleString()} {order.currency}</p>
+                </div>
+                <span className="font-medium whitespace-nowrap">{Number(item.subtotal).toLocaleString()} {order.currency}</span>
               </div>
-              <span className="font-medium whitespace-nowrap">{Number(item.subtotal).toLocaleString()} {order.currency}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="border-t mt-2 pt-4 flex justify-between font-bold text-sm">
           <span>Total</span>

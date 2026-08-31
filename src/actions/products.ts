@@ -267,85 +267,107 @@ export async function getProducts(params: ProductFilterParams = {}) {
       where.brand = { slug: brandSlug };
     }
 
-    let orderBy: any = { created_at: "desc" };
-    if (sortBy === "featured") {
-      orderBy = [{ featured: "desc" }, { created_at: "desc" }];
-    } else if (sortBy === "newest") {
-      orderBy = { created_at: "desc" };
-    } else if (sortBy === "price-asc") {
-      orderBy = {
-        variants: {
-          _min: {
-            price: "asc",
-          },
+    const orderBy: any =
+      sortBy === "featured"
+        ? [{ featured: "desc" }, { created_at: "desc" }]
+        : { created_at: "desc" };
+
+    const dbProductsResult = await prisma.products.findMany({
+      where,
+      include: {
+        category: { select: { id: true, name: true, slug: true } },
+        brand: { select: { id: true, name: true, slug: true } },
+        images: {
+          orderBy: { sort_order: "asc" },
+          take: 2,
         },
-      };
-    } else if (sortBy === "price-desc") {
-      orderBy = {
         variants: {
-          _max: {
-            price: "desc",
+          where: { is_active: true },
+          include: {
+            color: true,
+            size: true,
+            inventory: true,
           },
+          orderBy: { price: "asc" },
         },
-      };
+      },
+      orderBy,
+    }).catch((err) => {
+      console.error("Error fetching products from DB:", err);
+      return [];
+    });
+
+    const dbProducts = Array.isArray(dbProductsResult) ? dbProductsResult : [];
+
+    const dbSlugs = new Set(dbProducts.map((p: any) => p.slug));
+    const dbIds = new Set(dbProducts.map((p: any) => p.id));
+    const matchingSamples = sampleProducts.filter(
+      (sample) =>
+        !dbSlugs.has(sample.slug) &&
+        !dbIds.has(sample.id) &&
+        matchesProductFilters(sample, params)
+    );
+
+    let combinedProducts: any[] = [...dbProducts, ...matchingSamples];
+
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      combinedProducts = combinedProducts.filter((p: any) => {
+        const price = Number(p.variants?.[0]?.price ?? 0);
+        if (minPrice !== undefined && price < minPrice) return false;
+        if (maxPrice !== undefined && price > maxPrice) return false;
+        return true;
+      });
     }
 
+    if (sortBy === "price-asc") {
+      combinedProducts.sort((a: any, b: any) => {
+        const pA = Number(a.variants?.[0]?.price ?? 0);
+        const pB = Number(b.variants?.[0]?.price ?? 0);
+        return pA - pB;
+      });
+    } else if (sortBy === "price-desc") {
+      combinedProducts.sort((a: any, b: any) => {
+        const pA = Number(a.variants?.[0]?.price ?? 0);
+        const pB = Number(b.variants?.[0]?.price ?? 0);
+        return pB - pA;
+      });
+    } else if (sortBy === "newest") {
+      combinedProducts.sort((a: any, b: any) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+    } else {
+      combinedProducts.sort(
+        (a: any, b: any) => Number(b.featured ?? false) - Number(a.featured ?? false)
+      );
+    }
+
+    const total = combinedProducts.length;
     const skip = (page - 1) * limit;
-
-    const [productsResult, totalResult] = await Promise.all([
-      prisma.products.findMany({
-        where,
-        include: {
-          category: { select: { id: true, name: true, slug: true } },
-          brand: { select: { id: true, name: true, slug: true } },
-          images: {
-            orderBy: { sort_order: "asc" },
-            take: 2,
-          },
-          variants: {
-            where: { is_active: true },
-            include: {
-              color: true,
-              size: true,
-              inventory: true,
-            },
-            orderBy: { price: "asc" },
-          },
-        },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      prisma.products.count({ where }),
-    ]).catch(() => [[], 0] as const);
-
-    const products = Array.isArray(productsResult) ? productsResult : [];
-    const total = typeof totalResult === "number" ? totalResult : 0;
-
-    const fallbackProducts = filterSampleProducts(params);
-    const finalProducts = products.length > 0 ? products : fallbackProducts;
-    const finalTotal = products.length > 0 ? total : fallbackProducts.length;
+    const paginatedProducts = combinedProducts.slice(skip, skip + limit);
 
     return {
       success: true,
-      data: finalProducts,
+      data: paginatedProducts,
       pagination: {
         page,
         limit,
-        total: finalTotal,
-        totalPages: Math.ceil(finalTotal / limit),
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
       },
     };
   } catch (error: any) {
     console.error("Error fetching products:", error);
+    const fallbackProducts = filterSampleProducts(params);
     return {
       success: false,
       error: "Failed to fetch products",
-      data: filterSampleProducts(params),
+      data: fallbackProducts,
       pagination: {
         page: 1,
         limit: 12,
-        total: filterSampleProducts(params).length,
+        total: fallbackProducts.length,
         totalPages: 1,
       },
     };
