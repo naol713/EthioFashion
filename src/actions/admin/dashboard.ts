@@ -2,6 +2,7 @@
 
 import { requireAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/db/prisma';
+import { getTotalProductCount } from '@/actions/products';
 
 export async function getAdminDashboard() {
   await requireAdmin();
@@ -9,7 +10,7 @@ export async function getAdminDashboard() {
     prisma.orders.count(),
     prisma.orders.aggregate({ _sum: { total_amount: true }, where: { payment_status: 'PAID' } }),
     prisma.profiles.count(),
-    prisma.products.count(),
+    getTotalProductCount(),
     // Count inventory records where available stock (quantity - reserved) is at or below the variant's own threshold
     prisma.$queryRaw<Array<{ count: string }>>`
       SELECT COUNT(*)::text AS count

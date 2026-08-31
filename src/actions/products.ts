@@ -141,7 +141,15 @@ function matchesProductFilters(
   const { categorySlug, brandSlug, gender, query, featured } = params;
 
   if (featured && !product.featured) return false;
-  if (gender && product.gender !== gender) return false;
+  if (gender) {
+    if (gender === "MALE") {
+      if (product.gender !== "MALE" && product.gender !== "UNISEX") return false;
+    } else if (gender === "FEMALE") {
+      if (product.gender !== "FEMALE" && product.gender !== "UNISEX") return false;
+    } else {
+      if (product.gender !== gender) return false;
+    }
+  }
   if (categorySlug && product.category?.slug !== categorySlug) return false;
   if (brandSlug && product.brand?.slug !== brandSlug) return false;
 
@@ -247,7 +255,13 @@ export async function getProducts(params: ProductFilterParams = {}) {
     }
 
     if (gender) {
-      where.gender = gender;
+      if (gender === ProductGender.MALE) {
+        where.gender = { in: [ProductGender.MALE, ProductGender.UNISEX] };
+      } else if (gender === ProductGender.FEMALE) {
+        where.gender = { in: [ProductGender.FEMALE, ProductGender.UNISEX] };
+      } else {
+        where.gender = gender;
+      }
     }
 
     if (query) {
@@ -272,30 +286,32 @@ export async function getProducts(params: ProductFilterParams = {}) {
         ? [{ featured: "desc" }, { created_at: "desc" }]
         : { created_at: "desc" };
 
-    const dbProductsResult = await prisma.products.findMany({
-      where,
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-        brand: { select: { id: true, name: true, slug: true } },
-        images: {
-          orderBy: { sort_order: "asc" },
-          take: 2,
-        },
-        variants: {
-          where: { is_active: true },
-          include: {
-            color: true,
-            size: true,
-            inventory: true,
+    const dbProductsResult = await prisma.products
+      .findMany({
+        where,
+        include: {
+          category: { select: { id: true, name: true, slug: true } },
+          brand: { select: { id: true, name: true, slug: true } },
+          images: {
+            orderBy: { sort_order: "asc" },
+            take: 2,
           },
-          orderBy: { price: "asc" },
+          variants: {
+            where: { is_active: true },
+            include: {
+              color: true,
+              size: true,
+              inventory: true,
+            },
+            orderBy: { price: "asc" },
+          },
         },
-      },
-      orderBy,
-    }).catch((err) => {
-      console.error("Error fetching products from DB:", err);
-      return [];
-    });
+        orderBy,
+      })
+      .catch((err) => {
+        console.error("Error fetching products from DB:", err);
+        return [];
+      });
 
     const dbProducts = Array.isArray(dbProductsResult) ? dbProductsResult : [];
 
@@ -305,7 +321,7 @@ export async function getProducts(params: ProductFilterParams = {}) {
       (sample) =>
         !dbSlugs.has(sample.slug) &&
         !dbIds.has(sample.id) &&
-        matchesProductFilters(sample, params)
+        matchesProductFilters(sample, params),
     );
 
     let combinedProducts: any[] = [...dbProducts, ...matchingSamples];
@@ -339,7 +355,8 @@ export async function getProducts(params: ProductFilterParams = {}) {
       });
     } else {
       combinedProducts.sort(
-        (a: any, b: any) => Number(b.featured ?? false) - Number(a.featured ?? false)
+        (a: any, b: any) =>
+          Number(b.featured ?? false) - Number(a.featured ?? false),
       );
     }
 
@@ -371,6 +388,27 @@ export async function getProducts(params: ProductFilterParams = {}) {
         totalPages: 1,
       },
     };
+  }
+}
+
+export async function getTotalProductCount(): Promise<number> {
+  try {
+    const dbProducts = await prisma.products
+      .findMany({
+        where: { status: ProductStatus.ACTIVE, deleted_at: null },
+        select: { id: true, slug: true },
+      })
+      .catch(() => []);
+
+    const dbSlugs = new Set(dbProducts.map((p: any) => p.slug));
+    const dbIds = new Set(dbProducts.map((p: any) => p.id));
+    const sampleCount = sampleProducts.filter(
+      (s) => !dbSlugs.has(s.slug) && !dbIds.has(s.id),
+    ).length;
+
+    return dbProducts.length + sampleCount;
+  } catch {
+    return sampleProducts.length;
   }
 }
 

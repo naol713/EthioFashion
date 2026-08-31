@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Container } from "@/components/layout/container";
 import { Footer } from "@/components/layout/footer";
 import { PremiumHero } from "@/components/home/premium-hero";
-import { getFeaturedProducts } from "@/actions/products";
+import { getFeaturedProducts, getTotalProductCount } from "@/actions/products";
 import { getCategories } from "@/actions/categories";
 import { getWishlist } from "@/actions/wishlist";
 import { ProductCard } from "@/components/product/product-card";
@@ -17,7 +17,7 @@ export default async function Home() {
     await Promise.all([
       getFeaturedProducts(6),
       getCategories(),
-      prisma.products.count({ where: { deleted_at: null } }),
+      getTotalProductCount(),
       prisma.profiles.count(),
     ]);
   const wishlistRes = await getWishlist();
