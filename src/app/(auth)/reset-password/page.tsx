@@ -22,7 +22,19 @@ export default function ResetPasswordPage() {
     if (password !== confirmation) return setError('Passwords do not match.');
     setLoading(true);
     const result = await updatePassword(password);
-    if (result.success) router.push('/login?message=password-updated');
+    if (result.success) {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        try {
+          const channel = new BroadcastChannel('ethio_auth_sync');
+          channel.postMessage({ type: 'password-updated' });
+          channel.close();
+        } catch {}
+      }
+      try {
+        localStorage.setItem('ethio_auth_event', JSON.stringify({ type: 'password-updated', t: Date.now() }));
+      } catch {}
+      router.push('/login?message=password-updated');
+    }
     else setError(result.error ?? 'Unable to update password.');
     setLoading(false);
   }

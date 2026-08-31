@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { resetPasswordForEmail } from '@/lib/auth/client';
 import { Button } from '@/components/ui/button';
@@ -9,10 +10,47 @@ import { Container } from '@/components/layout/container';
 import { Loader2, ArrowLeft } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const channel = typeof window !== 'undefined' && 'BroadcastChannel' in window
+      ? new BroadcastChannel('ethio_auth_sync')
+      : null;
+
+    const handleSync = (data: { type: string; email?: string }) => {
+      if (data.type === 'password-updated' || data.type === 'verified') {
+        const p = new URLSearchParams();
+        p.set('message', data.type);
+        if (data.email) p.set('email', data.email);
+        router.replace(`/login?${p.toString()}`);
+      }
+    };
+
+    if (channel) {
+      channel.onmessage = (e) => {
+        if (e.data) handleSync(e.data);
+      };
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'ethio_auth_event' && e.newValue) {
+        try {
+          handleSync(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      if (channel) channel.close();
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

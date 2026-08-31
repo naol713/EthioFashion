@@ -63,6 +63,15 @@ export function Header({ isAdmin = false }: { isAdmin?: boolean }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [expandedMobile, setExpandedMobile] = useState<Record<string, boolean>>({});
+
+  const toggleMobileExpand = (name: string) => {
+    setExpandedMobile((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const handleMobileNavigate = () => {
+    setMobileOpen(false);
+  };
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 8);
@@ -206,7 +215,7 @@ export function Header({ isAdmin = false }: { isAdmin?: boolean }) {
               </Button>
             </Link>
 
-            {/* Admin Dashboard button — only visible to admins */}
+            {/* Admin Dashboard button — visible to admins on desktop */}
             {isAdmin && (
               <Link
                 href="/admin"
@@ -249,52 +258,131 @@ export function Header({ isAdmin = false }: { isAdmin?: boolean }) {
             </Button>
           </div>
         </div>
+      </Container>
 
-        {/* Mobile menu */}
-        {mobileOpen && (
-          <div className="md:hidden py-4 border-t border-gray-100 animate-slideDown">
-            <nav className="flex flex-col gap-1">
-              {navigation.map((item) => (
-                <div key={item.name}>
+      {/* Mobile Drawer Panel & Backdrop */}
+      {mobileOpen && (
+        <div className="md:hidden">
+          {/* Backdrop overlay */}
+          <div
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs transition-opacity"
+            onClick={() => setMobileOpen(false)}
+          />
+
+          {/* Right corner drawer panel */}
+          <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] bg-white border-l border-gray-200 shadow-2xl flex flex-col justify-between overflow-y-auto">
+            <div>
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                <span className="font-bold text-[#0a0a0a] text-base">Menu</span>
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  className="p-2 rounded-lg text-gray-500 hover:text-[#0a0a0a] hover:bg-gray-100 transition-colors"
+                  aria-label="Close menu"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Mobile Navigation */}
+              <nav className="p-4 space-y-1">
+                {/* Admin Dashboard Button for Admins */}
+                {isAdmin && (
                   <Link
-                    href={item.href}
-                    className="block px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-[#0a0a0a] hover:bg-gray-50 rounded-lg transition-colors"
-                    onClick={() => setMobileOpen(false)}
+                    href="/admin"
+                    onClick={handleMobileNavigate}
+                    className="flex items-center gap-2.5 w-full mb-4 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#f0cc5a] text-[#0a0a0a] text-xs font-bold shadow-sm border border-[#b8962e]/30 hover:opacity-95 transition-all"
                   >
-                    {item.name}
+                    <LayoutDashboard className="h-4 w-4" />
+                    Admin Dashboard
                   </Link>
-                  {item.children && (
-                    <div className="pl-4">
-                      {item.children.map((sub) => (
+                )}
+
+                {navigation.map((item) => {
+                  const hasChildren = Boolean(
+                    item.children && item.children.length > 0,
+                  );
+                  const isExpanded = Boolean(expandedMobile[item.name]);
+
+                  return (
+                    <div
+                      key={item.name}
+                      className="border-b border-gray-100/80 pb-1"
+                    >
+                      <div className="flex items-center justify-between">
                         <Link
-                          key={sub.name}
-                          href={sub.href}
-                          className="block px-3 py-2 text-xs text-gray-500 hover:text-[#0a0a0a] hover:bg-gray-50 rounded-lg transition-colors"
-                          onClick={() => setMobileOpen(false)}
+                          href={item.href}
+                          onClick={handleMobileNavigate}
+                          className="flex-1 py-2.5 px-2 text-sm font-semibold text-gray-800 hover:text-[#0a0a0a] transition-colors"
                         >
-                          {sub.name}
+                          {item.name}
                         </Link>
-                      ))}
+
+                        {hasChildren && (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              toggleMobileExpand(item.name);
+                            }}
+                            className="p-2 text-gray-400 hover:text-[#0a0a0a] transition-colors"
+                            aria-label={`Toggle ${item.name}`}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 transition-transform duration-200",
+                                isExpanded && "rotate-180 text-[#0a0a0a]",
+                              )}
+                            />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Collapsible Children (hidden by default) */}
+                      {hasChildren && isExpanded && (
+                        <div className="pl-4 pb-2 space-y-1 border-l-2 border-[#D4AF37]/40 ml-2 mt-1">
+                          {item.children!.map((sub) => (
+                            <Link
+                              key={sub.name}
+                              href={sub.href}
+                              onClick={handleMobileNavigate}
+                              className="block py-1.5 px-2 text-xs font-medium text-gray-600 hover:text-[#0a0a0a] hover:bg-gray-50 rounded-lg transition-colors"
+                            >
+                              {sub.name}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
-            </nav>
-            <div className="mt-4 pt-4 border-t border-gray-100 flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" asChild>
-                <Link href="/account">Account</Link>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* Drawer Footer Actions */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50/50 space-y-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
+                asChild
+              >
+                <Link href="/account" onClick={handleMobileNavigate}>
+                  <User className="h-4 w-4 mr-2" /> My Account
+                </Link>
               </Button>
               <Button
                 size="sm"
-                className="flex-1 bg-[#0a0a0a] text-white hover:bg-[#1a1a1a]"
+                className="w-full justify-center bg-[#0a0a0a] text-white hover:bg-[#1a1a1a]"
                 asChild
               >
-                <Link href="/cart">Cart (0)</Link>
+                <Link href="/cart" onClick={handleMobileNavigate}>
+                  <ShoppingBag className="h-4 w-4 mr-2" /> View Cart
+                </Link>
               </Button>
             </div>
           </div>
-        )}
-      </Container>
+        </div>
+      )}
     </header>
   );
 }

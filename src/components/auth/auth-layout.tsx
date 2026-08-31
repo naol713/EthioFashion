@@ -20,7 +20,7 @@ export function AuthLayout() {
     pathname?.includes("/register") ? "register" : "login",
   );
 
-  // Login form state
+  // Login form state — email pre-filled if present in URL query, password ALWAYS empty
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,7 +28,7 @@ export function AuthLayout() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Register form state
+  // Register form state — ALWAYS initialized to empty strings
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -40,11 +40,24 @@ export function AuthLayout() {
   const [registerShowPassword, setRegisterShowPassword] = useState(false);
   const [registerError, setRegisterError] = useState("");
   const [registerLoading, setRegisterLoading] = useState(false);
+
   const emailSentMessage = searchParams.get("message") === "check-email";
+  const verifiedMessage = searchParams.get("message") === "verified";
+  const passwordUpdatedMessage =
+    searchParams.get("message") === "password-updated";
 
   useEffect(() => {
     if (pathname?.includes("/register")) {
       setMode("register");
+      // Reset register form state so it is always clean and empty
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        password: "",
+        confirmPassword: "",
+      });
     } else if (pathname?.includes("/login")) {
       setMode("login");
     }
@@ -52,10 +65,93 @@ export function AuthLayout() {
 
   useEffect(() => {
     const messageFromQuery = searchParams.get("message");
-    if (messageFromQuery === "check-email") {
+    const emailFromQuery = searchParams.get("email");
+
+    if (
+      messageFromQuery === "check-email" ||
+      messageFromQuery === "verified" ||
+      messageFromQuery === "password-updated"
+    ) {
       setMode("login");
     }
-  }, [searchParams]);
+
+    if (emailFromQuery) {
+      setEmail(emailFromQuery);
+    } else {
+      setEmail("");
+    }
+
+    // Security requirement: Password must NEVER be pre-filled automatically
+    setPassword("");
+
+    // Setup cross-tab sync channel
+    const channel =
+      typeof window !== "undefined" && "BroadcastChannel" in window
+        ? new BroadcastChannel("ethio_auth_sync")
+        : null;
+
+    if (
+      (messageFromQuery === "verified" ||
+        messageFromQuery === "password-updated") &&
+      channel
+    ) {
+      channel.postMessage({
+        type: messageFromQuery,
+        email: emailFromQuery || "",
+      });
+      try {
+        localStorage.setItem(
+          "ethio_auth_event",
+          JSON.stringify({
+            type: messageFromQuery,
+            email: emailFromQuery || "",
+            t: Date.now(),
+          }),
+        );
+      } catch {}
+    }
+
+    const handleSync = (data: { type: string; email?: string }) => {
+      if (data.type === "verified" || data.type === "password-updated") {
+        const p = new URLSearchParams();
+        p.set("message", data.type);
+        if (data.email) p.set("email", data.email);
+        router.replace(`/login?${p.toString()}`);
+      }
+    };
+
+    if (channel) {
+      channel.onmessage = (e) => {
+        if (e.data) handleSync(e.data);
+      };
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "ethio_auth_event" && e.newValue) {
+        try {
+          handleSync(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+
+    // Force clear any browser autofill values on load
+    const timer = setTimeout(() => {
+      const pwdInput = document.getElementById(
+        "password",
+      ) as HTMLInputElement | null;
+      if (pwdInput) {
+        pwdInput.value = "";
+      }
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      if (channel) channel.close();
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [searchParams, router]);
 
   async function handleLoginSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -76,7 +172,6 @@ export function AuthLayout() {
       if (redirectPath?.startsWith("/") && !redirectPath.startsWith("//")) {
         destination = redirectPath;
       } else {
-        // Check if user is admin and redirect accordingly
         try {
           const roleRes = await fetch("/api/auth/me");
           if (roleRes.ok) {
@@ -142,11 +237,26 @@ export function AuthLayout() {
     });
 
     if (result.success) {
+      const registeredEmail = formData.email;
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        password: "",
+        confirmPassword: "",
+      });
+
       const params = new URLSearchParams();
       if (result.needsConfirmation) {
         params.set("message", "check-email");
       }
-      router.replace(params.toString() ? `/login?${params.toString()}` : "/login");
+      if (registeredEmail) {
+        params.set("email", registeredEmail);
+      }
+      router.replace(
+        params.toString() ? `/login?${params.toString()}` : "/login",
+      );
       router.refresh();
     } else {
       setRegisterError(
@@ -159,7 +269,6 @@ export function AuthLayout() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 sm:p-6 lg:p-8">
-      {/* Overflow hides the moving overlay while it transitions between panels. */}
       <div
         className={`auth-container relative isolate h-[100dvh] w-full overflow-hidden bg-gray-50 transition-[height] duration-500 ease-in-out sm:max-h-[calc(100dvh-4rem)] sm:max-w-5xl sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-2xl ${
           mode === "login" ? "sm:h-[34rem]" : "sm:h-[44rem]"
@@ -200,11 +309,27 @@ export function AuthLayout() {
                 </p>
               </div>
 
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <form
+                onSubmit={handleLoginSubmit}
+                autoComplete="off"
+                className="space-y-4"
+              >
                 {emailSentMessage && (
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-                    Your account was created. Please check your email to verify
+                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+                    Your account was created! Please check your email to verify
                     your account, then sign in with your email and password.
+                  </div>
+                )}
+                {verifiedMessage && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                    Email verified successfully! Please enter your password to
+                    sign in.
+                  </div>
+                )}
+                {passwordUpdatedMessage && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                    Password updated successfully! Please sign in with your new
+                    password.
                   </div>
                 )}
                 {error && (
@@ -226,6 +351,7 @@ export function AuthLayout() {
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="off"
                     required
                     disabled={loading}
                   />
@@ -253,6 +379,7 @@ export function AuthLayout() {
                       placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      autoComplete="new-password"
                       required
                       disabled={loading}
                       className="pr-10"
@@ -342,7 +469,7 @@ export function AuthLayout() {
             </div>
           </div>
 
-          {/* Hidden registration controls stay non-interactive until the panel flips. */}
+          {/* Right Side - Registration Form */}
           <div
             aria-hidden={mode !== "register"}
             inert={mode !== "register"}
@@ -376,7 +503,11 @@ export function AuthLayout() {
                 </p>
               </div>
 
-              <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              <form
+                onSubmit={handleRegisterSubmit}
+                autoComplete="off"
+                className="space-y-4"
+              >
                 {registerError && (
                   <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
                     {registerError}
@@ -394,9 +525,10 @@ export function AuthLayout() {
                     <Input
                       id="firstName"
                       name="firstName"
-                      placeholder="John"
+                      placeholder="Naol"
                       value={formData.firstName}
                       onChange={handleRegisterChange}
+                      autoComplete="given-name"
                       required
                       disabled={registerLoading}
                     />
@@ -411,9 +543,10 @@ export function AuthLayout() {
                     <Input
                       id="lastName"
                       name="lastName"
-                      placeholder="Doe"
+                      placeholder="Rebo"
                       value={formData.lastName}
                       onChange={handleRegisterChange}
+                      autoComplete="family-name"
                       required
                       disabled={registerLoading}
                     />
@@ -434,6 +567,7 @@ export function AuthLayout() {
                     placeholder="you@example.com"
                     value={formData.email}
                     onChange={handleRegisterChange}
+                    autoComplete="off"
                     required
                     disabled={registerLoading}
                   />
@@ -446,15 +580,16 @@ export function AuthLayout() {
                   >
                     Phone (Ethiopia)
                   </label>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      placeholder="+251 91 234 5678"
-                      value={formData.phone}
-                      onChange={handleRegisterChange}
-                      disabled={registerLoading}
-                    />
+                  <Input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    placeholder="+251 91 234 5678"
+                    value={formData.phone}
+                    onChange={handleRegisterChange}
+                    autoComplete="tel"
+                    disabled={registerLoading}
+                  />
                   <p className="text-xs text-gray-500">
                     For order updates via SMS
                   </p>
@@ -475,6 +610,7 @@ export function AuthLayout() {
                       placeholder="At least 8 characters"
                       value={formData.password}
                       onChange={handleRegisterChange}
+                      autoComplete="new-password"
                       required
                       disabled={registerLoading}
                       className="pr-10"
@@ -509,6 +645,7 @@ export function AuthLayout() {
                     placeholder="Confirm your password"
                     value={formData.confirmPassword}
                     onChange={handleRegisterChange}
+                    autoComplete="new-password"
                     required
                     disabled={registerLoading}
                   />
@@ -521,7 +658,7 @@ export function AuthLayout() {
 
                 <Button
                   type="submit"
-                  className="w-full bg-[#0a0a0a] text-white hover:bg-[#1a1a1a]"
+                  className="w-full bg-[#0a0a0a] text-[#ffffff] hover:bg-[#1a1a1a]"
                   disabled={registerLoading}
                 >
                   {registerLoading ? (
@@ -548,7 +685,7 @@ export function AuthLayout() {
           </div>
         </div>
 
-        {/* Auth overlay: moves left/right at every viewport size. */}
+        {/* Auth overlay */}
         <div
           className="absolute inset-y-0 right-0 z-10 flex w-1/2 items-center justify-center overflow-hidden bg-[#0a0a0a] p-4 text-center text-white transition-[clip-path,transform] duration-500 ease-in-out sm:p-8"
           style={{
@@ -575,7 +712,9 @@ export function AuthLayout() {
           <div className="relative z-10 flex h-full w-full flex-col items-center justify-center text-center">
             <div className="max-w-xs">
               <p className="mb-2 text-base font-bold sm:mb-3 sm:text-2xl">
-                {mode === "login" ? "New to EthioFashion?" : "Already a member?"}
+                {mode === "login"
+                  ? "New to EthioFashion?"
+                  : "Already a member?"}
               </p>
               <p className="mb-4 text-xs leading-5 text-gray-300 sm:mb-7 sm:text-sm sm:leading-6">
                 {mode === "login"
@@ -589,17 +728,16 @@ export function AuthLayout() {
               >
                 {mode === "login" ? "Create account" : "Sign in"}
               </button>
-            <Link
-              href="/"
-              className="mt-5 inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/8 px-4 py-2 text-xs font-medium text-white shadow-[0_0_18px_rgba(255,255,255,0.22)] transition-all hover:bg-white hover:text-[#0a0a0a] hover:shadow-[0_0_24px_rgba(255,255,255,0.35)] sm:px-5 sm:py-2.5"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to home
-            </Link>
+              <Link
+                href="/"
+                className="mt-5 inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/8 px-4 py-2 text-xs font-medium text-white shadow-[0_0_18px_rgba(255,255,255,0.22)] transition-all hover:bg-white hover:text-[#0a0a0a] hover:shadow-[0_0_24px_rgba(255,255,255,0.35)] sm:px-5 sm:py-2.5"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to home
+              </Link>
+            </div>
           </div>
         </div>
-        </div>
-
       </div>
     </div>
   );

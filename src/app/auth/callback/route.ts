@@ -12,16 +12,19 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
       return NextResponse.redirect(new URL("/login?error=oauth", requestUrl.origin));
     }
 
+    const userEmail = data.user?.email || "";
     const safeRedirect =
       redirectPath && redirectPath.startsWith("/") && !redirectPath.startsWith("//")
         ? redirectPath
-        : "/account";
+        : userEmail
+          ? `/login?message=verified&email=${encodeURIComponent(userEmail)}`
+          : "/account";
 
     return NextResponse.redirect(new URL(safeRedirect, requestUrl.origin));
   } catch {
